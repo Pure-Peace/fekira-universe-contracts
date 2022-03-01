@@ -110,6 +110,6 @@ export async function deployContracts(deploy: DeployFunction) {
 
 export async function deployFekiraUniverse() {
   const {deployer, deploy} = await setup();
-  const deployments = await deployContracts(deploy, deployer);
+  const deployments = await deployContracts(deploy);
   console.log('>>> CONTRACTS SETUP DONE <<<');
 }

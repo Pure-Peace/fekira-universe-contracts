@@ -14,17 +14,33 @@ const toTokenAmount = (amount: BigNumberish, tokenDecimal: BigNumberish) => {
 };
 
 const config: {[key: string]: DeployConfig} = {
+  hardhat: {
+    name: 'FekiraUniverse',
+    symbol: 'FU',
+    randomnessRevealer: '0x86DB88892459F98e3D4337B75aABd7E3D2734328',
+    hashOfLaunchMetadataList:
+      '0x03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4',
+  },
   kovan: {
     name: 'FekiraUniverse',
     symbol: 'FU',
-    randomnessRevealer: 'address',
-    hashOfLaunchMetadataList: '0x0',
+    randomnessRevealer: '0x86DB88892459F98e3D4337B75aABd7E3D2734328',
+    hashOfLaunchMetadataList:
+      '0x03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4',
   },
   mainnet: {
     name: 'FekiraUniverse',
     symbol: 'FU',
-    randomnessRevealer: 'address',
-    hashOfLaunchMetadataList: '0x0',
+    randomnessRevealer: '0x86DB88892459F98e3D4337B75aABd7E3D2734328',
+    hashOfLaunchMetadataList:
+      '0x03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4',
+  },
+  rinkeby: {
+    name: 'FekiraUniverse',
+    symbol: 'FU',
+    randomnessRevealer: '0x86DB88892459F98e3D4337B75aABd7E3D2734328',
+    hashOfLaunchMetadataList:
+      '0x03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4',
   },
 };
 
