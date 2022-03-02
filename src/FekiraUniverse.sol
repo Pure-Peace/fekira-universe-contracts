@@ -10,6 +10,7 @@ import "@openzeppelin/contracts/utils/Context.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 /**
  * @title FekiraUniverse contract
@@ -18,6 +19,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, IERC721Enumerable {
     using Address for address;
     using Strings for uint256;
+    using SafeMath for uint16;
+    using SafeMath for uint256;
 
     struct TokenOwnership {
         address addr;
@@ -27,8 +30,8 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
     struct AddressData {
         uint128 balance;
         uint128 numberMinted;
-        uint128 numberMintedOfWhitelist;
-        uint128 numberMintedOfSales;
+        uint16 numberMintedOfWhitelist;
+        uint16 numberMintedOfSales;
     }
 
     uint256 internal currentIndex;
@@ -87,11 +90,11 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
         return _launchCollectionSize;
     }
 
-    function getNumberMintedOfSales(address owner) public view returns (uint256) {
+    function getNumberMintedOfSales(address owner) public view returns (uint16) {
         return _addressData[owner].numberMintedOfSales;
     }
 
-    function getNumberMintedOfWhitelist(address owner) public view returns (uint256) {
+    function getNumberMintedOfWhitelist(address owner) public view returns (uint16) {
         return _addressData[owner].numberMintedOfWhitelist;
     }
 
@@ -407,14 +410,11 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
     function mintFU(uint256 quantity) external payable {
         require(saleIsActive, "public sale must have started");
         require(
-            (_addressData[msg.sender].numberMintedOfSales + quantity) <= MAX_PUBLIC_SALES_MINTING_PER_USERS,
+            (_addressData[msg.sender].numberMintedOfSales.add(quantity)) <= MAX_PUBLIC_SALES_MINTING_PER_USERS,
             "reached the maximum number of public mints for users"
         );
-        require((MINTING_PRICE * quantity) <= msg.value, "ether value sent is not correct");
-        // Overflows are incredibly unrealistic.
-        unchecked {
-            _addressData[msg.sender].numberMintedOfSales += uint128(quantity);
-        }
+        require((MINTING_PRICE.mul(quantity)) <= msg.value, "ether value sent is not correct");
+        _addressData[msg.sender].numberMintedOfSales.add(quantity);
         _safeMint(msg.sender, quantity);
     }
 
@@ -432,13 +432,10 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
         require(verify(to, quantity, userCurrentNumberMinted, signature), "signature invalid");
         require(_addressData[to].numberMinted == userCurrentNumberMinted, "number minted invalid");
         require(
-            (_addressData[to].numberMintedOfWhitelist + quantity) <= MAX_WHITE_LIST_MINTING_PER_USERS,
+            (_addressData[to].numberMintedOfWhitelist.add(quantity)) <= MAX_WHITE_LIST_MINTING_PER_USERS,
             "reached the maximum number of whitelist mints for users"
         );
-        // Overflows are incredibly unrealistic.
-        unchecked {
-            _addressData[to].numberMintedOfWhitelist += uint128(quantity);
-        }
+        _addressData[to].numberMintedOfWhitelist.add(quantity);
         _safeMint(to, quantity);
     }
 
@@ -481,7 +478,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
         bytes memory _data,
         bool safe
     ) internal {
-        require((totalSupply() + quantity) <= MAX_SUPPLY, "Exceed max supply");
+        require((totalSupply().add(quantity)) <= MAX_SUPPLY, "Exceed max supply");
 
         uint256 startTokenId = currentIndex;
         require(to != address(0), "ERC721A: mint to the zero address");
