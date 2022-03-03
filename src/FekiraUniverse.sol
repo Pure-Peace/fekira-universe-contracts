@@ -42,7 +42,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
     string private _symbol;
 
     // Token base uri
-    string private _baseTokenURI;
+    string private _baseTokenURI = "https://p4010183-u833-067a4df9.app.run.fish/api/v1/unpack/"; // test
 
     // Mapping from token ID to ownership details
     // An empty struct value does not necessarily mean the token is unowned. See ownershipOf implementation for details.
@@ -60,7 +60,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
     bytes32 public hashOfLaunchMetadataList;
     string public launchMetadataListURL;
     address public randomnessRevealer;
-    bool public saleIsActive;
+    bool public saleIsActive = true; // test
 
     uint256 public constant MAX_SUPPLY = 10;
     uint128 public constant MAX_WHITE_LIST_MINTING_PER_USERS = 2;
@@ -245,10 +245,13 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
      * @dev See {IERC721Metadata-tokenURI}.
      */
     function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
-        require(_exists(externalTokenIdToInternalTokenId(tokenId)), "ERC721Metadata: URI query for nonexistent token");
+        require(_exists(tokenId), "ERC721Metadata: URI query for nonexistent token");
 
         string memory baseURI = _baseURI();
-        return bytes(baseURI).length != 0 ? string(abi.encodePacked(baseURI, tokenId.toString())) : "";
+        return
+            bytes(baseURI).length != 0
+                ? string(abi.encodePacked(baseURI, internalTokenIdToExternalTokenId(tokenId).toString()))
+                : "";
     }
 
     /**
