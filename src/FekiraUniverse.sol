@@ -421,7 +421,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
             "reached the maximum number of public mints for users"
         );
         require((MINTING_PRICE.mul(quantity)) <= msg.value, "ether value sent is not correct");
-        _addressData[msg.sender].numberMintedOfSales.add(quantity);
+        _addressData[msg.sender].numberMintedOfSales += uint16(quantity);
         _safeMint(msg.sender, quantity);
     }
 
@@ -443,7 +443,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
             "reached the maximum number of whitelist mints for users"
         );
         require((MINTING_PRICE.mul(quantity)) <= msg.value, "ether value sent is not correct");
-        _addressData[to].numberMintedOfWhitelist.add(quantity);
+        _addressData[to].numberMintedOfWhitelist += uint16(quantity);
         _safeMint(to, quantity);
     }
 
