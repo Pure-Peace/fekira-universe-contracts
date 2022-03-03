@@ -41,6 +41,9 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
     // Token symbol
     string private _symbol;
 
+    // Token base uri
+    string private _baseTokenURI;
+
     // Mapping from token ID to ownership details
     // An empty struct value does not necessarily mean the token is unowned. See ownershipOf implementation for details.
     mapping(uint256 => TokenOwnership) internal _ownerships;
@@ -59,7 +62,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
     address public randomnessRevealer;
     bool public saleIsActive;
 
-    uint256 public constant MAX_SUPPLY = 10_000;
+    uint256 public constant MAX_SUPPLY = 10;
     uint128 public constant MAX_WHITE_LIST_MINTING_PER_USERS = 2;
     uint128 public constant MAX_PUBLIC_SALES_MINTING_PER_USERS = 2;
     address public constant WHITELIST_SIGNERS = 0x86DB88892459F98e3D4337B75aABd7E3D2734328;
@@ -254,7 +257,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
      * by default, can be overriden in child contracts.
      */
     function _baseURI() internal view virtual returns (string memory) {
-        return "https://metadata.url/";
+        return _baseTokenURI;
     }
 
     /**
@@ -397,6 +400,10 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
         payable(msg.sender).transfer(balance);
     }
 
+    function setBaseURI(string memory baseURI) public onlyOwner {
+        _baseTokenURI = baseURI;
+    }
+
     /**
      * @dev Toggle public sale status
      */
@@ -428,13 +435,14 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
         uint256 quantity,
         uint256 userCurrentNumberMinted,
         bytes memory signature
-    ) external {
+    ) external payable {
         require(verify(to, quantity, userCurrentNumberMinted, signature), "signature invalid");
         require(_addressData[to].numberMinted == userCurrentNumberMinted, "number minted invalid");
         require(
             (_addressData[to].numberMintedOfWhitelist.add(quantity)) <= MAX_WHITE_LIST_MINTING_PER_USERS,
             "reached the maximum number of whitelist mints for users"
         );
+        require((MINTING_PRICE.mul(quantity)) <= msg.value, "ether value sent is not correct");
         _addressData[to].numberMintedOfWhitelist.add(quantity);
         _safeMint(to, quantity);
     }
