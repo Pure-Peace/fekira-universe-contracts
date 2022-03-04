@@ -85,11 +85,11 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
     uint256 private _launchCollectionSize = 0;
     uint256 private _2xlaunchCollectionSize = 0;
 
-    function getRandomOffset() public view returns (uint256) {
+    function getRandomOffset() external view returns (uint256) {
         return _randomOffset;
     }
 
-    function getLaunchCollectionSize() public view returns (uint256) {
+    function getLaunchCollectionSize() external view returns (uint256) {
         return _launchCollectionSize;
     }
 
@@ -101,7 +101,38 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
         return _addressData[owner].numberMintedOfWhitelist;
     }
 
-    function revealLaunchRandomness(uint256 randomOffset_, string memory launchMetadataListURL_) public {
+    function getMintingInfo(address user, uint8 mintsType)
+        external
+        view
+        returns (
+            uint256,
+            uint256,
+            uint256,
+            uint128,
+            uint16
+        )
+    {
+        if (mintsType == 0) {
+            return (
+                totalSupply(),
+                MAX_SUPPLY,
+                MINTING_PRICE,
+                MAX_WHITE_LIST_MINTING_PER_USERS,
+                getNumberMintedOfSales(user)
+            );
+        } else if (mintsType == 1) {
+            return (
+                totalSupply(),
+                MAX_SUPPLY,
+                MINTING_PRICE,
+                MAX_PUBLIC_SALES_MINTING_PER_USERS,
+                getNumberMintedOfWhitelist(user)
+            );
+        }
+        revert("Mints type should be 0 or 1");
+    }
+
+    function revealLaunchRandomness(uint256 randomOffset_, string memory launchMetadataListURL_) external {
         require(msg.sender == randomnessRevealer, "not allowed");
         require(_randomOffset == 0 && _launchCollectionSize == 0, "cannot reveal twice");
         _launchCollectionSize = totalSupply();
@@ -224,7 +255,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
      * @dev See {IERC721-ownerOf}.
      */
     function ownerOf(uint256 tokenId) public view override returns (address) {
-        return ownershipOf(externalTokenIdToInternalTokenId(tokenId)).addr;
+        return ownershipOf(tokenId).addr;
     }
 
     /**
