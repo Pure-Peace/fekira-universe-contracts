@@ -12,6 +12,25 @@ import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
+error ApprovalCallerNotOwnerNorApproved();
+error ApprovalQueryForNonexistentToken();
+error ApproveToCaller();
+error ApprovalToCurrentOwner();
+error BalanceQueryForZeroAddress();
+error MintedQueryForZeroAddress();
+error MintToZeroAddress();
+error MintZeroQuantity();
+error OwnerIndexOutOfBounds();
+error OwnerQueryForNonexistentToken();
+error TokenIndexOutOfBounds();
+error TransferCallerNotOwnerNorApproved();
+error TransferFromIncorrectOwner();
+error TransferToNonERC721ReceiverImplementer();
+error TransferToZeroAddress();
+error URIQueryForNonexistentToken();
+error InsufficientEtherValue();
+error NumberOfMintExceedsLimit();
+
 /**
  * @title FekiraUniverse contract
  * @dev Extends ERC721A implementation
@@ -23,18 +42,29 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
     using SafeMath for uint256;
 
     struct TokenOwnership {
+        // The address of the owner.
         address addr;
+        // Keeps track of the start time of ownership with minimal overhead for tokenomics.
         uint64 startTimestamp;
     }
 
     struct AddressData {
-        uint128 balance;
-        uint128 numberMinted;
+        // Realistically, 2**64-1 is more than enough.
+        uint64 balance;
+        // Keeps track of mint count with minimal overhead for tokenomics.
+        uint64 numberMinted;
         uint16 numberMintedOfWhitelist;
         uint16 numberMintedOfSales;
     }
 
-    uint256 internal currentIndex;
+    enum MintsType {
+        Whitelist,
+        PublicSale
+    }
+
+    // The tokenId of the next token to be minted.
+    uint256 internal _currentIndex;
+
     // Token name
     string private _name;
 
@@ -57,14 +87,14 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
     // Mapping from owner to operator approvals
     mapping(address => mapping(address => bool)) private _operatorApprovals;
 
-    bytes32 public hashOfLaunchMetadataList;
+    bytes32 public immutable hashOfLaunchMetadataList;
     string public launchMetadataListURL;
-    address public randomnessRevealer;
+    address public immutable randomnessRevealer;
     bool public saleIsActive = true; // test
 
-    uint256 public constant MAX_SUPPLY = 10;
-    uint128 public constant MAX_WHITE_LIST_MINTING_PER_USERS = 2;
-    uint128 public constant MAX_PUBLIC_SALES_MINTING_PER_USERS = 2;
+    uint256 public constant MAX_SUPPLY = 10000;
+    uint16 public constant MAX_WHITE_LIST_MINTING_PER_USERS = 2;
+    uint16 public constant MAX_PUBLIC_SALES_MINTING_PER_USERS = 2;
     address public constant WHITELIST_SIGNERS = 0x86DB88892459F98e3D4337B75aABd7E3D2734328;
 
     uint256 public constant MINTING_PRICE = 0.0000666 ether; // 0.08
@@ -83,36 +113,54 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
 
     uint256 private _randomOffset = 0;
     uint256 private _launchCollectionSize = 0;
-    uint256 private _2xlaunchCollectionSize = 0;
 
     function getRandomOffset() external view returns (uint256) {
         return _randomOffset;
     }
 
+    /**
+     * @notice Total number of tokens minted at reveal
+     */
     function getLaunchCollectionSize() external view returns (uint256) {
         return _launchCollectionSize;
     }
 
+    /**
+     * @notice Returns the total number of tokens minted by the user (public sale)
+     */
     function getNumberMintedOfSales(address owner) public view returns (uint16) {
         return _addressData[owner].numberMintedOfSales;
     }
 
+    /**
+     * @notice Returns the total number of tokens minted by the user (whitelist)
+     */
     function getNumberMintedOfWhitelist(address owner) public view returns (uint16) {
         return _addressData[owner].numberMintedOfWhitelist;
     }
 
-    function getMintingInfo(address user, uint8 mintsType)
+    /**
+     * @notice Get mint information
+     * @param user user address
+     * @param mintsType 0: whitelist, 1: public sale
+     * @return _totalSupply Current supply
+     * @return maxSupply Max supply
+     * @return mintingPrice The unit price of mint one (wei)
+     * @return maxMintingPerUsersMintsType The maximum mint amount of the user under the specified mint type
+     * @return numberMintedOfUserMintsType The number of mints the user has mint under the specified mint type
+     */
+    function getMintingInfo(address user, MintsType mintsType)
         external
         view
         returns (
-            uint256,
-            uint256,
-            uint256,
-            uint128,
-            uint16
+            uint256 _totalSupply,
+            uint256 maxSupply,
+            uint256 mintingPrice,
+            uint16 maxMintingPerUsersMintsType,
+            uint16 numberMintedOfUserMintsType
         )
     {
-        if (mintsType == 0) {
+        if (mintsType == MintsType.Whitelist) {
             return (
                 totalSupply(),
                 MAX_SUPPLY,
@@ -120,7 +168,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
                 MAX_WHITE_LIST_MINTING_PER_USERS,
                 getNumberMintedOfSales(user)
             );
-        } else if (mintsType == 1) {
+        } else if (mintsType == MintsType.PublicSale) {
             return (
                 totalSupply(),
                 MAX_SUPPLY,
@@ -129,7 +177,6 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
                 getNumberMintedOfWhitelist(user)
             );
         }
-        revert("Mints type should be 0 or 1");
     }
 
     function revealLaunchRandomness(uint256 randomOffset_, string memory launchMetadataListURL_) external {
@@ -138,39 +185,42 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
         _launchCollectionSize = totalSupply();
         require(_launchCollectionSize != 0, "supply cannot be 0");
         _randomOffset = randomOffset_ % _launchCollectionSize;
-        _2xlaunchCollectionSize = _launchCollectionSize * 2;
         launchMetadataListURL = launchMetadataListURL_;
     }
 
+    /**
+     * @notice Convert token external id (id after reveal) to internal id (id before reveal).
+     */
     function externalTokenIdToInternalTokenId(uint256 externalTokenId) public view returns (uint256) {
-        require(externalTokenId >= _launchCollectionSize);
-        if (externalTokenId >= (_launchCollectionSize << 1)) {
-            return externalTokenId - _launchCollectionSize;
-        } else {
-            return (externalTokenId - _randomOffset) % _launchCollectionSize;
-        }
+        return tokenIdConverter(externalTokenId + _randomOffset);
     }
 
+    /**
+     * @notice Convert token internal id (id before reveal) to external id (id after reveal).
+     */
     function internalTokenIdToExternalTokenId(uint256 internalTokenId) public view returns (uint256) {
-        if (internalTokenId < _launchCollectionSize) {
-            return ((internalTokenId + _randomOffset) % _launchCollectionSize) + _launchCollectionSize;
-        } else {
-            return internalTokenId + _launchCollectionSize;
+        return tokenIdConverter(internalTokenId + _launchCollectionSize - _randomOffset);
+    }
+
+    function tokenIdConverter(uint256 _tokenIdWithOffset) private view returns (uint256) {
+        if (_tokenIdWithOffset >= _launchCollectionSize) {
+            return _tokenIdWithOffset - _launchCollectionSize;
         }
+        return _tokenIdWithOffset;
     }
 
     /**
      * @dev See {IERC721Enumerable-totalSupply}.
      */
     function totalSupply() public view override returns (uint256) {
-        return currentIndex;
+        return _currentIndex;
     }
 
     /**
      * @dev See {IERC721Enumerable-tokenByIndex}.
      */
     function tokenByIndex(uint256 index) public view override returns (uint256) {
-        require(index < totalSupply(), "ERC721A: global index out of bounds");
+        if (index >= totalSupply()) revert TokenIndexOutOfBounds();
         return internalTokenIdToExternalTokenId(index);
     }
 
@@ -180,7 +230,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
      * It may also degrade with extremely large collection sizes (e.g >> 10000), test for your use case.
      */
     function tokenOfOwnerByIndex(address owner, uint256 index) public view override returns (uint256) {
-        require(index < balanceOf(owner), "ERC721A: owner index out of bounds");
+        if (index >= balanceOf(owner)) revert TokenIndexOutOfBounds();
         uint256 numMintedSoFar = totalSupply();
         uint256 tokenIdsIdx;
         address currOwnershipAddr;
@@ -201,7 +251,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
             }
         }
 
-        revert("ERC721A: unable to get token of owner by index");
+        revert("unable to get token of owner by index");
     }
 
     /**
@@ -219,16 +269,19 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
      * @dev See {IERC721-balanceOf}.
      */
     function balanceOf(address owner) public view override returns (uint256) {
-        require(owner != address(0), "ERC721A: balance query for the zero address");
+        if (owner == address(0)) revert BalanceQueryForZeroAddress();
         return uint256(_addressData[owner].balance);
     }
 
+    /**
+     * @notice Returns the total number of tokens minted by the user
+     */
     function numberMinted(address owner) public view returns (uint256) {
         return _numberMinted(owner);
     }
 
     function _numberMinted(address owner) internal view returns (uint256) {
-        require(owner != address(0), "ERC721A: number minted query for the zero address");
+        if (owner == address(0)) revert MintedQueryForZeroAddress();
         return uint256(_addressData[owner].numberMinted);
     }
 
@@ -237,18 +290,28 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
      * It gradually moves to O(1) as tokens get transferred around in the collection over time.
      */
     function ownershipOf(uint256 tokenId) internal view returns (TokenOwnership memory) {
-        require(_exists(tokenId), "ERC721A: owner query for nonexistent token");
+        uint256 curr = tokenId;
 
         unchecked {
-            for (uint256 curr = tokenId; curr >= 0; curr--) {
+            if (curr < _currentIndex) {
                 TokenOwnership memory ownership = _ownerships[curr];
                 if (ownership.addr != address(0)) {
                     return ownership;
                 }
+                // Invariant:
+                // There will always be an ownership that has an address and is not burned
+                // before an ownership that does not have an address and is not burned.
+                // Hence, curr will not underflow.
+                while (true) {
+                    curr--;
+                    ownership = _ownerships[curr];
+                    if (ownership.addr != address(0)) {
+                        return ownership;
+                    }
+                }
             }
         }
-
-        revert("ERC721A: unable to determine the owner of token");
+        revert OwnerQueryForNonexistentToken();
     }
 
     /**
@@ -276,7 +339,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
      * @dev See {IERC721Metadata-tokenURI}.
      */
     function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
-        require(_exists(tokenId), "ERC721Metadata: URI query for nonexistent token");
+        if (!_exists(tokenId)) revert URIQueryForNonexistentToken();
 
         string memory baseURI = _baseURI();
         return
@@ -299,12 +362,11 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
      */
     function approve(address to, uint256 tokenId) public override {
         address owner = FekiraUniverse.ownerOf(tokenId);
-        require(to != owner, "ERC721A: approval to current owner");
+        if (to == owner) revert ApprovalToCurrentOwner();
 
-        require(
-            _msgSender() == owner || isApprovedForAll(owner, _msgSender()),
-            "ERC721A: approve caller is not owner nor approved for all"
-        );
+        if (_msgSender() != owner && !isApprovedForAll(owner, _msgSender())) {
+            revert ApprovalCallerNotOwnerNorApproved();
+        }
 
         _approve(to, tokenId, owner);
     }
@@ -313,9 +375,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
      * @dev See {IERC721-getApproved}.
      */
     function getApproved(uint256 tokenId) public view override returns (address) {
-        tokenId = externalTokenIdToInternalTokenId(tokenId);
-        require(_exists(tokenId), "ERC721A: approved query for nonexistent token");
-
+        if (!_exists(tokenId)) revert ApprovalQueryForNonexistentToken();
         return _tokenApprovals[tokenId];
     }
 
@@ -323,7 +383,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
      * @dev See {IERC721-setApprovalForAll}.
      */
     function setApprovalForAll(address operator, bool approved) public override {
-        require(operator != _msgSender(), "ERC721A: approve to caller");
+        if (operator == _msgSender()) revert ApproveToCaller();
 
         _operatorApprovals[_msgSender()][operator] = approved;
         emit ApprovalForAll(_msgSender(), operator, approved);
@@ -368,10 +428,9 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
         bytes memory _data
     ) public override {
         _transfer(from, to, tokenId);
-        require(
-            _checkOnERC721Received(from, to, tokenId, _data),
-            "ERC721A: transfer to non ERC721Receiver implementer"
-        );
+        if (!_checkOnERC721Received(from, to, tokenId, _data)) {
+            revert TransferToNonERC721ReceiverImplementer();
+        }
     }
 
     /**
@@ -382,7 +441,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
      * Tokens start existing when they are minted (`_mint`),
      */
     function _exists(uint256 tokenId) internal view returns (bool) {
-        return tokenId < currentIndex;
+        return tokenId < _currentIndex;
     }
 
     function splitSignature(bytes memory sig)
@@ -431,6 +490,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
 
     function withdraw() public onlyOwner {
         uint256 balance = address(this).balance;
+        require(balance > 0, "Withdrawable amount is 0");
         payable(msg.sender).transfer(balance);
     }
 
@@ -450,11 +510,9 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
      */
     function mintFU(uint256 quantity) external payable {
         require(saleIsActive, "public sale must have started");
-        require(
-            (_addressData[msg.sender].numberMintedOfSales.add(quantity)) <= MAX_PUBLIC_SALES_MINTING_PER_USERS,
-            "reached the maximum number of public mints for users"
-        );
-        require((MINTING_PRICE.mul(quantity)) <= msg.value, "ether value sent is not correct");
+        if ((_addressData[msg.sender].numberMintedOfSales.add(quantity)) > MAX_PUBLIC_SALES_MINTING_PER_USERS)
+            revert NumberOfMintExceedsLimit();
+        if (msg.value < (MINTING_PRICE.mul(quantity))) revert InsufficientEtherValue();
         _addressData[msg.sender].numberMintedOfSales += uint16(quantity);
         _safeMint(msg.sender, quantity);
     }
@@ -472,11 +530,9 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
     ) external payable {
         require(verify(to, quantity, userCurrentNumberMinted, signature), "signature invalid");
         require(_addressData[to].numberMinted == userCurrentNumberMinted, "number minted invalid");
-        require(
-            (_addressData[to].numberMintedOfWhitelist.add(quantity)) <= MAX_WHITE_LIST_MINTING_PER_USERS,
-            "reached the maximum number of whitelist mints for users"
-        );
-        require((MINTING_PRICE.mul(quantity)) <= msg.value, "ether value sent is not correct");
+        if ((_addressData[to].numberMintedOfWhitelist.add(quantity)) > MAX_WHITE_LIST_MINTING_PER_USERS)
+            revert NumberOfMintExceedsLimit();
+        if (msg.value < (MINTING_PRICE.mul(quantity))) revert InsufficientEtherValue();
         _addressData[to].numberMintedOfWhitelist += uint16(quantity);
         _safeMint(to, quantity);
     }
@@ -513,7 +569,6 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
      *
      * Emits a {Transfer} event.
      */
-
     function _mint(
         address to,
         uint256 quantity,
@@ -522,39 +577,41 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
     ) internal {
         require((totalSupply().add(quantity)) <= MAX_SUPPLY, "Exceed max supply");
 
-        uint256 startTokenId = currentIndex;
-        require(to != address(0), "ERC721A: mint to the zero address");
-        require(quantity != 0, "ERC721A: quantity must be greater than 0");
+        uint256 startTokenId = _currentIndex;
+        if (to == address(0)) revert MintToZeroAddress();
+        if (quantity == 0) revert MintZeroQuantity();
 
         _beforeTokenTransfers(address(0), to, startTokenId, quantity);
 
         // Overflows are incredibly unrealistic.
-        // balance or numberMinted overflow if current value of either + quantity > 3.4e38 (2**128) - 1
-        // updatedIndex overflows if currentIndex + quantity > 1.56e77 (2**256) - 1
+        // balance or numberMinted overflow if current value of either + quantity > 1.8e19 (2**64) - 1
+        // updatedIndex overflows if _currentIndex + quantity > 1.2e77 (2**256) - 1
         unchecked {
-            _addressData[to].balance += uint128(quantity);
-            _addressData[to].numberMinted += uint128(quantity);
+            _addressData[to].balance += uint64(quantity);
+            _addressData[to].numberMinted += uint64(quantity);
 
             _ownerships[startTokenId].addr = to;
             _ownerships[startTokenId].startTimestamp = uint64(block.timestamp);
 
             uint256 updatedIndex = startTokenId;
+            uint256 end = updatedIndex + quantity;
 
-            for (uint256 i; i < quantity; i++) {
-                emit Transfer(address(0), to, internalTokenIdToExternalTokenId(updatedIndex));
-                if (safe) {
-                    require(
-                        _checkOnERC721Received(address(0), to, internalTokenIdToExternalTokenId(updatedIndex), _data),
-                        "ERC721A: transfer to non ERC721Receiver implementer"
-                    );
-                }
-
-                updatedIndex++;
+            if (safe && to.isContract()) {
+                do {
+                    emit Transfer(address(0), to, updatedIndex);
+                    if (!_checkOnERC721Received(address(0), to, updatedIndex++, _data)) {
+                        revert TransferToNonERC721ReceiverImplementer();
+                    }
+                } while (updatedIndex != end);
+                // Reentrancy protection
+                if (_currentIndex != startTokenId) revert();
+            } else {
+                do {
+                    emit Transfer(address(0), to, updatedIndex++);
+                } while (updatedIndex != end);
             }
-
-            currentIndex = updatedIndex;
+            _currentIndex = updatedIndex;
         }
-
         _afterTokenTransfers(address(0), to, startTokenId, quantity);
     }
 
@@ -571,24 +628,22 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
     function _transfer(
         address from,
         address to,
-        uint256 externalTokenId
+        uint256 tokenId
     ) private {
-        uint256 tokenId = internalTokenIdToExternalTokenId(externalTokenId);
         TokenOwnership memory prevOwnership = ownershipOf(tokenId);
 
         bool isApprovedOrOwner = (_msgSender() == prevOwnership.addr ||
-            getApproved(tokenId) == _msgSender() ||
-            isApprovedForAll(prevOwnership.addr, _msgSender()));
+            isApprovedForAll(prevOwnership.addr, _msgSender()) ||
+            getApproved(tokenId) == _msgSender());
 
-        require(isApprovedOrOwner, "ERC721A: transfer caller is not owner nor approved");
-
-        require(prevOwnership.addr == from, "ERC721A: transfer from incorrect owner");
-        require(to != address(0), "ERC721A: transfer to the zero address");
+        if (!isApprovedOrOwner) revert TransferCallerNotOwnerNorApproved();
+        if (prevOwnership.addr != from) revert TransferFromIncorrectOwner();
+        if (to == address(0)) revert TransferToZeroAddress();
 
         _beforeTokenTransfers(from, to, tokenId, 1);
 
         // Clear approvals from the previous owner
-        _approve(address(0), externalTokenId, prevOwnership.addr);
+        _approve(address(0), tokenId, prevOwnership.addr);
 
         // Underflow of the sender's balance is impossible because we check for
         // ownership above and the recipient's balance can't realistically overflow.
@@ -604,14 +659,16 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
             // Set the slot of tokenId+1 explicitly in storage to maintain correctness for ownerOf(tokenId+1) calls.
             uint256 nextTokenId = tokenId + 1;
             if (_ownerships[nextTokenId].addr == address(0)) {
-                if (_exists(nextTokenId)) {
+                // This will suffice for checking _exists(nextTokenId),
+                // as a burned slot cannot contain the zero address.
+                if (nextTokenId < _currentIndex) {
                     _ownerships[nextTokenId].addr = prevOwnership.addr;
                     _ownerships[nextTokenId].startTimestamp = prevOwnership.startTimestamp;
                 }
             }
         }
 
-        emit Transfer(from, to, externalTokenId);
+        emit Transfer(from, to, tokenId);
         _afterTokenTransfers(from, to, tokenId, 1);
     }
 
@@ -625,7 +682,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
         uint256 tokenId,
         address owner
     ) private {
-        _tokenApprovals[externalTokenIdToInternalTokenId(tokenId)] = to;
+        _tokenApprovals[tokenId] = to;
         emit Approval(owner, to, tokenId);
     }
 
@@ -650,7 +707,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
                 return retval == IERC721Receiver(to).onERC721Received.selector;
             } catch (bytes memory reason) {
                 if (reason.length == 0) {
-                    revert("ERC721A: transfer to non ERC721Receiver implementer");
+                    revert TransferToNonERC721ReceiverImplementer();
                 } else {
                     assembly {
                         revert(add(32, reason), mload(reason))
