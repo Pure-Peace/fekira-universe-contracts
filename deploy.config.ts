@@ -5,6 +5,7 @@ import {BigNumber, BigNumberish} from 'ethers';
 export type DeployConfig = {
   name: string;
   symbol: string;
+  baseURI: string;
   randomnessRevealer: string;
   hashOfLaunchMetadataList: string;
 };
@@ -17,13 +18,15 @@ const config: {[key: string]: DeployConfig} = {
   hardhat: {
     name: 'FekiraUniverse',
     symbol: 'FU',
+    baseURI: 'https://p4010183-u833-067a4df9.app.run.fish/api/v1/unpack/',
     randomnessRevealer: '0x86DB88892459F98e3D4337B75aABd7E3D2734328',
     hashOfLaunchMetadataList:
       '0x03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4',
   },
   kovan: {
-    name: 'FekiraUniverse',
+    name: 'FekiraUniverse-Test',
     symbol: 'FU',
+    baseURI: 'https://p4010183-u833-067a4df9.app.run.fish/api/v1/unpack/',
     randomnessRevealer: '0x86DB88892459F98e3D4337B75aABd7E3D2734328',
     hashOfLaunchMetadataList:
       '0x03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4',
@@ -31,13 +34,15 @@ const config: {[key: string]: DeployConfig} = {
   mainnet: {
     name: 'FekiraUniverse',
     symbol: 'FU',
+    baseURI: 'https://p4010183-u833-067a4df9.app.run.fish/api/v1/unpack/',
     randomnessRevealer: '0x86DB88892459F98e3D4337B75aABd7E3D2734328',
     hashOfLaunchMetadataList:
       '0x03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4',
   },
   rinkeby: {
-    name: 'FekiraUniverse',
+    name: 'FekiraUniverse-Test',
     symbol: 'FU',
+    baseURI: 'https://p4010183-u833-067a4df9.app.run.fish/api/v1/unpack/',
     randomnessRevealer: '0x86DB88892459F98e3D4337B75aABd7E3D2734328',
     hashOfLaunchMetadataList:
       '0x03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4',

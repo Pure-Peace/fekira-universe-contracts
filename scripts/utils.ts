@@ -100,11 +100,19 @@ export function waitContractCall(
 
 export async function deployContracts(deploy: DeployFunction) {
   console.log('\n>>>>>>>>> Deploying contracts...\n');
+  const {
+    name,
+    symbol,
+    baseURI,
+    randomnessRevealer,
+    hashOfLaunchMetadataList,
+  } = deployConfig();
   return await deploy('FekiraUniverse', 'FekiraUniverse', [
-    deployConfig().name,
-    deployConfig().symbol,
-    deployConfig().randomnessRevealer,
-    deployConfig().hashOfLaunchMetadataList,
+    name,
+    symbol,
+    baseURI,
+    randomnessRevealer,
+    hashOfLaunchMetadataList,
   ]);
 }
 

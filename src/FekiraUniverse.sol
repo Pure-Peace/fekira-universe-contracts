@@ -72,7 +72,7 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
     string private _symbol;
 
     // Token base uri
-    string private _baseTokenURI = "https://p4010183-u833-067a4df9.app.run.fish/api/v1/unpack/"; // test
+    string private _baseTokenURI;
 
     // Mapping from token ID to ownership details
     // An empty struct value does not necessarily mean the token is unowned. See ownershipOf implementation for details.
@@ -88,9 +88,8 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
     mapping(address => mapping(address => bool)) private _operatorApprovals;
 
     bytes32 public immutable hashOfLaunchMetadataList;
-    string public launchMetadataListURL;
     address public immutable randomnessRevealer;
-    bool public saleIsActive = true; // test
+    bool public saleIsActive;
 
     uint256 public constant MAX_SUPPLY = 10000;
     uint16 public constant MAX_WHITE_LIST_MINTING_PER_USERS = 2;
@@ -102,11 +101,13 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
     constructor(
         string memory name_,
         string memory symbol_,
+        string memory baseURI_,
         address randomnessRevealer_,
         bytes32 hashOfLaunchMetadataList_
     ) {
         _name = name_;
         _symbol = symbol_;
+        _baseTokenURI = baseURI_;
         hashOfLaunchMetadataList = hashOfLaunchMetadataList_;
         randomnessRevealer = randomnessRevealer_;
     }
@@ -179,13 +180,16 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
         }
     }
 
+    /**
+     * @dev Reveal real token id and metadata
+     */
     function revealLaunchRandomness(uint256 randomOffset_, string memory launchMetadataListURL_) external {
         require(msg.sender == randomnessRevealer, "not allowed");
         require(_randomOffset == 0 && _launchCollectionSize == 0, "cannot reveal twice");
         _launchCollectionSize = totalSupply();
         require(_launchCollectionSize != 0, "supply cannot be 0");
         _randomOffset = randomOffset_ % _launchCollectionSize;
-        launchMetadataListURL = launchMetadataListURL_;
+        _baseTokenURI = launchMetadataListURL_;
     }
 
     /**
@@ -492,10 +496,6 @@ contract FekiraUniverse is Context, Ownable, ERC165, IERC721, IERC721Metadata, I
         uint256 balance = address(this).balance;
         require(balance > 0, "Withdrawable amount is 0");
         payable(msg.sender).transfer(balance);
-    }
-
-    function setBaseURI(string memory baseURI) public onlyOwner {
-        _baseTokenURI = baseURI;
     }
 
     /**
